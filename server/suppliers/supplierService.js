@@ -57,43 +57,38 @@ function normalizeSocials(item = {}) {
 // =====================================================
 
 function normalizeSupplier(item, requestedProduct) {
-  let name = "Supplier lead";
-  let website = null;
-  let description = "";
+  const isTextResult = typeof item === "string";
+  const match = isTextResult
+    ? item.match(/\[([^\]]+)\]\((https?:\/\/[^)]+)\)/)
+    : null;
+  const data =
+    typeof item === "object" && item !== null
+      ? item
+      : {};
 
-  if (typeof item === "string") {
-    const match = item.match(
-      /\[([^\]]+)\]\((https?:\/\/[^)]+)\)/
-    );
+  const name = isTextResult
+    ? match?.[1] || "Supplier lead"
+    : item?.title || item?.name || "Supplier lead";
 
-    name = match?.[1] || "Supplier lead";
-    website = match?.[2] || null;
-    description = item;
-  } else {
-    website =
-      typeof item?.url === "string"
-        ? item.url
-        : item?.website || null;
+  const website = isTextResult
+    ? match?.[2] || null
+    : typeof item?.url === "string"
+      ? item.url
+      : item?.website || null;
 
-    name = item?.title || item?.name || "Supplier lead";
-
-    const contents = item?.contents;
-
-    description = [
-      item?.description,
-      ...(Array.isArray(item?.snippets) ? item.snippets : []),
-      ...(Array.isArray(item?.highlights) ? item.highlights : []),
-      ...(Array.isArray(contents?.highlights)
-        ? contents.highlights
-        : []),
-    ]
-      .filter(Boolean)
-      .join(" ");
-  }
-
-  const data = typeof item === "object" && item !== null
+  const contents = data.contents;
+  const description = isTextResult
     ? item
-    : {};
+    : [
+        item?.description,
+        ...(Array.isArray(item?.snippets) ? item.snippets : []),
+        ...(Array.isArray(item?.highlights) ? item.highlights : []),
+        ...(Array.isArray(contents?.highlights)
+          ? contents.highlights
+          : []),
+      ]
+        .filter(Boolean)
+        .join(" ");
 
   return {
     id: website || `${name}-${requestedProduct}`,
@@ -703,6 +698,7 @@ const directSupplierLeads = classifiedSourceResults.filter(
 
 const combinedLeads = [
   ...directSupplierLeads,
+  ...eligibleExtractedCompanies,
 ];
   // Deduplicate again, preferring extracted company
   // records when the same official website appears.

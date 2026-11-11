@@ -2,10 +2,10 @@
 import express from "express";
 import supabase from "./supabase.js";
 import dotenv from "dotenv";
-import { searchYouSuppliers } from "./youSearch.js";
 import { searchSuppliers } from "./suppliers/supplierService.js";
 import { analyzeFarmerRequest } from "./ai/gemini.js";
 import { analyzeFarmerRequestWithGroq } from "./ai/groq.js";
+import { askOpenRouter } from "./ai/openrouter.js";
 import "dotenv/config";
 dotenv.config();
 
@@ -23,7 +23,7 @@ app.get("/api/health", (req, res) => {
 
 app.post("/api/suppliers/search", async (req, res) => {
   try {
-    const { product, location, country, region } = req.body;
+    const { product, location } = req.body;
 
     if (!product || typeof product !== "string") {
       return res.status(400).json({
@@ -31,22 +31,11 @@ app.post("/api/suppliers/search", async (req, res) => {
       });
     }
 
-    const destination = [location, country, region]
-      .filter(Boolean)
-      .join(", ");
 
-    const query = `
-      Find genuine manufacturers and suppliers of ${product}
-      worldwide.
-      Farmer delivery destination: ${destination || "Worldwide"}.
-      Return company names, countries, official websites,
-      product information and source URLs.
-      Do not invent prices, stock, availability or delivery terms.
-    `;
 
    const result = await searchSuppliers({
   product,
-  location: location || country || region,
+  location,
 });
 
 return res.json(result);

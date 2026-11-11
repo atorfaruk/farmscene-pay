@@ -26,17 +26,13 @@ const [paymentAmount, setPaymentAmount] = useState('')
 const [paymentPreview, setPaymentPreview] = useState(false)
 const [paymentSending, setPaymentSending] = useState(false)
 const [paymentMessage, setPaymentMessage] = useState('')
-const [paymentTxHash, setPaymentTxHash] = useState('')
 const [paymentTransactions, setPaymentTransactions] = useState([])
 const [tidepoolAmount, setTidepoolAmount] = useState('')
 const [tidepoolQuote, setTidepoolQuote] = useState(null)
 const [tidepoolLoading, setTidepoolLoading] = useState(false)
 const [tidepoolError, setTidepoolError] = useState('')
 useEffect(() => {
-  if (!walletAccount) {
-    setPaymentTransactions([])
-    return
-  }
+  if (!walletAccount) return
 
   let isLoading = false
 
@@ -156,6 +152,7 @@ async function handleWalletConnect() {
 
       nearConnector.on('wallet:signOut', () => {
         setWalletAccount('')
+        setPaymentTransactions([])
       })
 
       walletListenerRegistered.current = true
@@ -245,7 +242,6 @@ async function handleApprovePayment() {
 
   setPaymentSending(true)
   setPaymentMessage('')
-  setPaymentTxHash('')
   setWalletError('')
 
   try {
@@ -284,7 +280,6 @@ async function handleApprovePayment() {
       return
     }
 
-    setPaymentTxHash(hash)
 
     setPaymentTransactions((previous) => [
       {
