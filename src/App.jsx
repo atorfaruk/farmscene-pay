@@ -13,9 +13,18 @@ const [error, setError] = useState('')
 const [analysis, setAnalysis] = useState('')
   const [supplierProduct, setSupplierProduct] = useState('')
 const [supplierLocation, setSupplierLocation] = useState('')
+const [supplierRequest, setSupplierRequest] = useState('');
 const [supplierLoading, setSupplierLoading] = useState(false)
 const [supplierError, setSupplierError] = useState('')
 const [supplierResults, setSupplierResults] = useState(null)
+const [savedSuppliers, setSavedSuppliers] = useState([])
+const [savedSuppliersLoading, setSavedSuppliersLoading] = useState(false)
+const [savedSuppliersError, setSavedSuppliersError] = useState('')
+const [savedSupplierSearch, setSavedSupplierSearch] = useState('')
+const [savedSupplierCountry, setSavedSupplierCountry] = useState('')
+const [savedSupplierType, setSavedSupplierType] = useState('')
+const [savedSupplierPage, setSavedSupplierPage] = useState(1)
+const [savedSupplierPagination, setSavedSupplierPagination] = useState(null)
 const [walletConnecting, setWalletConnecting] = useState(false)
 const walletListenerRegistered = useRef(false)
 const [walletAccount, setWalletAccount] = useState('')
@@ -26,13 +35,23 @@ const [paymentAmount, setPaymentAmount] = useState('')
 const [paymentPreview, setPaymentPreview] = useState(false)
 const [paymentSending, setPaymentSending] = useState(false)
 const [paymentMessage, setPaymentMessage] = useState('')
+const [outlayerRequestId, setOutlayerRequestId] = useState('')
+const OUTLAYER_NEAR_ADDRESS = "bb45dbb9173210d5bb3b6559324e6b252eb06eaa3341204e76e9946311f6f408";
+const [outlayerTransactionHash, setOutlayerTransactionHash] = useState('')
+const [outlayerPaymentStatus, setOutlayerPaymentStatus] = useState('')
 const [paymentTransactions, setPaymentTransactions] = useState([])
+const [outlayerApprovalId, setOutlayerApprovalId] = useState('');
+const [outlayerApprovalStatus, setOutlayerApprovalStatus] = useState('');
 const [tidepoolAmount, setTidepoolAmount] = useState('')
 const [tidepoolQuote, setTidepoolQuote] = useState(null)
 const [tidepoolLoading, setTidepoolLoading] = useState(false)
 const [tidepoolError, setTidepoolError] = useState('')
+
 useEffect(() => {
-  if (!walletAccount) return
+if (!walletAccount) {
+  setPaymentTransactions([])
+  return
+}
 
   let isLoading = false
 
@@ -42,7 +61,7 @@ useEffect(() => {
 
     try {
       const response = await fetch(
-        `/api/payments/history/${encodeURIComponent(walletAccount)}`
+        `/api/payments/history/${encodeURIComponent(OUTLAYER_NEAR_ADDRESS)}`
       )
 
       const data = await response.json()
@@ -51,7 +70,7 @@ useEffect(() => {
         throw new Error('Could not load payment history.')
       }
 
-      const transactions = data.transactions
+      const transactions = data.transactions || []
 
       setPaymentTransactions(
         transactions.map((tx) => ({
@@ -69,7 +88,6 @@ useEffect(() => {
       for (const tx of transactions) {
         if (tx.status !== 'pending') continue
 
-        // Skip invalid demo/test hashes
         if (!/^[1-9A-HJ-NP-Za-km-z]{32,50}$/.test(tx.transaction_hash)) {
           continue
         }
@@ -80,7 +98,7 @@ useEffect(() => {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               transactionHash: tx.transaction_hash,
-              senderId: walletAccount,
+              senderId: OUTLAYER_NEAR_ADDRESS,
             }),
           })
 
@@ -98,7 +116,7 @@ useEffect(() => {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               transactionHash: tx.transaction_hash,
-              walletAddress: walletAccount,
+              walletAddress: OUTLAYER_NEAR_ADDRESS,
               supplierName: tx.supplier_name || 'Unknown supplier',
               recipientAddress: tx.recipient_address,
               amount: String(tx.amount_near),
@@ -165,30 +183,41 @@ async function handleWalletConnect() {
     setWalletConnecting(false)
   }
 }
+
 function handlePaymentPreview(e) {
-  e.preventDefault()
+  e.preventDefault();
 
-  if (!walletAccount) {
-    setWalletError('Connect your NEAR testnet wallet first.')
-    return
+  if (
+    !paymentSupplier.trim() ||
+    !paymentRecipient.trim() ||
+    !paymentAmount
+  ) {
+    setWalletError("Complete all payment details.");
+    return;
   }
 
-  if (!paymentSupplier.trim() || !paymentRecipient.trim() || !paymentAmount) {
-    return
+  if (
+    !(
+      /^[a-z0-9._-]+\.testnet$/.test(paymentRecipient.trim()) ||
+      /^[0-9a-f]{64}$/i.test(paymentRecipient.trim())
+    )
+  ) {
+    setWalletError(
+      "Enter a valid NEAR Testnet or implicit account address."
+    );
+    return;
   }
 
- if (!/^[a-z0-9._-]+\.testnet$/.test(paymentRecipient.trim())) {
-    setWalletError('Enter a valid NEAR testnet account ID.')
-    return
+  if (
+    !Number.isFinite(Number(paymentAmount)) ||
+    Number(paymentAmount) <= 0
+  ) {
+    setWalletError("Enter a valid payment amount.");
+    return;
   }
 
-  if (!Number.isFinite(Number(paymentAmount)) || Number(paymentAmount) <= 0) {
-    setWalletError('Enter a valid payment amount.')
-    return
-  }
-
-  setWalletError('')
-  setPaymentPreview(true)
+  setWalletError("");
+  setPaymentPreview(true);
 }
 
 
@@ -237,140 +266,215 @@ async function handleTidepoolQuote(e) {
   }
 }
 
-async function handleApprovePayment() {
-  if (paymentSending) return
-
-  setPaymentSending(true)
-  setPaymentMessage('')
-  setWalletError('')
+async function refreshOutlayerRequestStatus() {
+  if (!outlayerRequestId) return;
 
   try {
-    const amount = paymentAmount.trim()
+    const response = await fetch(
+      `/api/outlayer/requests/${outlayerRequestId}`
+    );
 
-    if (!/^(0|[1-9]\d*)(\.\d{1,24})?$/.test(amount) || Number(amount) <= 0) {
-      throw new Error('Enter a valid NEAR amount.')
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(
+        data.error || "Unable to refresh payment request."
+      );
     }
 
-    const [whole, fraction = ''] = amount.split('.')
+    const status = data.status || "unknown";
+    const txHash = data.tx_hash || "";
+
+    setOutlayerPaymentStatus(status);
+
+    if (txHash) {
+      setOutlayerTransactionHash(txHash);
+    }
+
+    if (status !== "success" || !txHash) {
+      setPaymentMessage(`OutLayer payment request: ${status}`);
+      return;
+    }
+
+    const verificationResponse = await fetch(
+      "/api/payments/verify",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          transactionHash: txHash,
+          senderId: OUTLAYER_NEAR_ADDRESS,
+        }),
+      }
+    );
+
+    const verification = await verificationResponse.json();
+
+    if (!verificationResponse.ok) {
+      throw new Error(
+        verification.error || "NEAR verification failed."
+      );
+    }
+
+    if (verification.status === "confirmed") {
+      const saveResponse = await fetch("/api/payments/save", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          transactionHash: txHash,
+          walletAddress: OUTLAYER_NEAR_ADDRESS,
+          supplierName: paymentSupplier,
+          recipientAddress: paymentRecipient.trim(),
+          amount: paymentAmount.trim(),
+          status: "confirmed",
+          blockHash: verification.blockHash || null,
+        }),
+      });
+
+      const saved = await saveResponse.json();
+
+      if (!saveResponse.ok) {
+        throw new Error(
+          saved.error || "Could not save verified payment."
+        );
+      }
+
+      setPaymentMessage(
+        "Payment verified on NEAR Testnet and saved to Supabase."
+      );
+    } else {
+      setPaymentMessage(
+        `Transaction verification status: ${verification.status}`
+      );
+    }
+
+  } catch (error) {
+    setWalletError(error.message);
+  }
+}
+
+async function refreshOutlayerStatus() {
+  if (!outlayerApprovalId) {
+    setWalletError("No OutLayer approval ID available.");
+    return;
+  }
+
+  try {
+    const response = await fetch(
+      `/api/outlayer/approvals/${outlayerApprovalId}`
+    );
+
+    const result = await response.json();
+
+    if (!response.ok) {
+      throw new Error(
+        result.error || "Unable to retrieve approval status."
+      );
+    }
+
+    const approval = result.approval || result;
+
+    setOutlayerApprovalStatus(
+      approval.status || "Status unavailable"
+    );
+
+    setWalletError("");
+  } catch (error) {
+    setWalletError(error.message);
+  }
+}
+async function handleApprovePayment() {
+  if (paymentSending) return;
+
+  setPaymentSending(true);
+  setPaymentMessage("");
+  setWalletError("");
+
+  try {
+    const amount = paymentAmount.trim();
+
+    if (
+      !/^(0|[1-9]\d*)(\.\d{1,24})?$/.test(amount) ||
+      Number(amount) <= 0
+    ) {
+      throw new Error("Enter a valid NEAR amount.");
+    }
+
+    const [whole, fraction = ""] = amount.split(".");
 
     const yoctoAmount = (
       BigInt(whole) * 10n ** 24n +
-      BigInt((fraction + '0'.repeat(24)).slice(0, 24))
-    ).toString()
+      BigInt((fraction + "0".repeat(24)).slice(0, 24))
+    ).toString();
 
-    const wallet = await nearConnector.wallet()
-
-    const result = await wallet.signAndSendTransaction({
-      receiverId: paymentRecipient.trim(),
-      actions: [{
-        type: 'Transfer',
-        params: {
-          deposit: yoctoAmount,
-        },
-      }],
-    })
-
-    const hash = result?.transaction?.hash ||
-      result?.transaction_outcome?.id
-
-    if (!hash) {
-      setPaymentMessage(
-        'Wallet returned without a transaction hash. Check your wallet before retrying.'
-      )
-      return
+    if (BigInt(yoctoAmount) > 10n ** 24n) {
+      throw new Error(
+        "Maximum payment is 1 NEAR under your OutLayer policy."
+      );
     }
 
-
-    setPaymentTransactions((previous) => [
-      {
-        id: hash,
-        supplier: paymentSupplier,
-        recipient: paymentRecipient.trim(),
-        amount: paymentAmount,
-        hash,
-        date: new Date().toLocaleString(),
-        status: 'Submitted',
+    const response = await fetch("/api/outlayer/transfers", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
       },
-      ...previous,
-    ])
+      body: JSON.stringify({
+        recipient: paymentRecipient.trim(),
+        amount: yoctoAmount,
+        confirmSubmission: true,
+      }),
+    });
 
-    let paymentStatus = 'pending'
-    let verifiedBlockHash = null
+    const result = await response.json();
 
-    // Verify transaction on NEAR
-    try {
-      const verificationResponse = await fetch('/api/payments/verify', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          transactionHash: hash,
-          senderId: walletAccount,
-        }),
-      })
-
-      const verification = await verificationResponse.json()
-
-      if (!verificationResponse.ok) {
-        throw new Error('Verification unavailable')
-      }
-
-      paymentStatus = verification.status
-      verifiedBlockHash = verification.blockHash || null
-
-      setPaymentTransactions((previous) =>
-        previous.map((tx) =>
-          tx.hash === hash
-            ? { ...tx, status: paymentStatus }
-            : tx
-        )
-      )
-    } catch (verificationError) {
-      console.error('Verification issue:', verificationError.message)
+    if (!response.ok) {
+      throw new Error(
+        result.error || "OutLayer rejected the request."
+      );
     }
 
-    // Save transaction in Supabase
-    try {
-      const saveResponse = await fetch('/api/payments/save', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          transactionHash: hash,
-          walletAddress: walletAccount,
-          supplierName: paymentSupplier,
-          recipientAddress: paymentRecipient.trim(),
-          amount: paymentAmount,
-          status: paymentStatus,
-          blockHash: verifiedBlockHash,
-        }),
-      })
+    const outlayer = result.outlayer || {};
 
-      if (!saveResponse.ok) {
-        throw new Error('Transaction could not be saved')
-      }
+    const requestId = outlayer.request_id || "";
+    const approvalId = outlayer.approval_id || "";
+    const status = outlayer.status || "submitted";
 
+    if (!requestId) {
+      throw new Error(
+        "OutLayer response did not contain a request ID."
+      );
+    }
+
+    setOutlayerRequestId(requestId);
+    setOutlayerApprovalId(approvalId);
+    setOutlayerPaymentStatus(status);
+    setOutlayerApprovalStatus(
+      approvalId ? "pending" : "not_required"
+    );
+
+    if (status === "pending_approval") {
       setPaymentMessage(
-        paymentStatus === 'confirmed'
-          ? 'Payment confirmed and saved successfully.'
-          : 'Payment submitted and saved. Verification is pending.'
-      )
-    } catch (saveError) {
-      console.error('Supabase save issue:', saveError.message)
-
+        "Payment request submitted. Awaiting approval in OutLayer."
+      );
+    } else {
       setPaymentMessage(
-        'Payment submitted. Transaction history could not be saved yet. Keep your hash.'
-      )
+        "Payment request received. Check its status before considering it paid."
+      );
     }
 
   } catch (err) {
-    setWalletError(err.message || 'Payment was cancelled or failed.')
+    setWalletError(
+      err.message || "OutLayer payment request failed."
+    );
   } finally {
-    setPaymentSending(false)
+    setPaymentSending(false);
   }
 }
+
 async function handleSubmit(e) {
   e.preventDefault();
 
@@ -407,174 +511,81 @@ async function handleSubmit(e) {
 }
 
 
-
 async function handleSupplierSearch(e) {
   e.preventDefault();
 
-  if (
-    !supplierProduct.trim() ||
-    !supplierLocation.trim() ||
-    supplierLoading
-  ) {
+  if (!supplierRequest.trim() || supplierLoading) {
     return;
   }
-
-  const products = [
-    ...new Set(
-      supplierProduct
-        .split(/[,;\n]+|\s+(?:and|&)\s+/i)
-        .map((product) => product.trim())
-        .filter(Boolean)
-    ),
-  ];
 
   setSupplierLoading(true);
   setSupplierError('');
   setSupplierResults(null);
 
   try {
-    const results = [];
-
-    // Search each requested product sequentially.
-    for (const product of products) {
-      const response = await fetch('/api/suppliers/search', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          product,
-          location: supplierLocation,
-        }),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(
-          data.error || `Search failed for ${product}.`
-        );
-      }
-
-      results.push({
-        product,
-        ...data,
-      });
-    }
-
-    // Combine all product search results.
-    const allSuppliers = results.flatMap((result) =>
-      (result.suppliers || []).map((supplier) => ({
-        ...supplier,
-        searchedProduct: result.product,
-      }))
-    );
-
-    const allResearchSources = results.flatMap((result) =>
-      (result.researchSources || []).map((source) => ({
-        ...source,
-        searchedProduct: result.product,
-      }))
-    );
-
-    // Deduplicate companies across all product searches.
-    const supplierMap = new Map();
-
-    for (const supplier of allSuppliers) {
-      const key = (
-        supplier.website ||
-        supplier.source ||
-        `${supplier.name}-${supplier.searchedProduct}`
-      ).toLowerCase();
-
-      if (!supplierMap.has(key)) {
-        supplierMap.set(key, supplier);
-      }
-    }
-
-    const uniqueSuppliers = Array.from(
-      supplierMap.values()
-    );
-
-    // Prioritise the five supplier categories.
-    const priority = {
-      manufacturer: 1,
-      distributor: 2,
-      wholesaler: 3,
-      retailer: 4,
-      marketplace: 5,
-    };
-
-    const rankedSuppliers = [...uniqueSuppliers].sort(
-      (a, b) => {
-        const aType = String(
-          a.supplierType || a.category || 'unknown'
-        ).toLowerCase();
-
-        const bType = String(
-          b.supplierType || b.category || 'unknown'
-        ).toLowerCase();
-
-        const aPriority =
-          priority[aType] || 99;
-
-        const bPriority =
-          priority[bType] || 99;
-
-        return aPriority - bPriority;
-      }
-    );
-
-    // GLOBAL LIMIT: maximum 15 across every product.
-    const finalSuppliers = rankedSuppliers.slice(0, 15);
-
-    // Deduplicate research sources separately.
-    const uniqueResearchSources = [
-      ...new Map(
-        allResearchSources.map((source) => [
-          source.website ||
-            source.source ||
-            `${source.name}-${source.searchedProduct}`,
-          source,
-        ])
-      ).values(),
-    ];
-
-    setSupplierResults({
-      status: finalSuppliers.length
-        ? 'leads_found'
-        : 'no_results',
-
-      message: finalSuppliers.length
-        ? `${finalSuppliers.length} supplier and marketplace leads discovered across ${products.length} product searches. Maximum 15 results across all products. Verify each company and offer before procurement.`
-        : `No supplier leads were returned across ${products.length} product searches. Try refining the product description or location.`,
-
-      search: {
-        products,
-        location: supplierLocation,
-        maximumResults: 15,
+    const response = await fetch('/api/suppliers/search', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
       },
-
-      provider: 'Multi-provider fallback',
-
-      suppliers: finalSuppliers,
-
-      researchSources: uniqueResearchSources,
-
-      totalLeadsBeforeLimit: uniqueSuppliers.length,
-
-      totalLeadsReturned: finalSuppliers.length,
+      body: JSON.stringify({
+        request: supplierRequest.trim(),
+      }),
     });
 
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.error || 'Supplier search failed.');
+    }
+
+    setSupplierResults(data);
+
+    console.log('Gemini supplier criteria:', data.criteria);
+    console.log('Supplier search results:', data.suppliers);
+
   } catch (err) {
-    setSupplierError(
-      err.message || 'Unable to search suppliers.'
-    );
+    setSupplierError(err.message || 'Unable to search suppliers.');
   } finally {
     setSupplierLoading(false);
   }
 }
 
+async function loadSavedSuppliers(page = 1) {
+  setSavedSuppliersLoading(true)
+  setSavedSuppliersError('')
+
+  try {
+    const params = new URLSearchParams({
+      search: savedSupplierSearch,
+      country: savedSupplierCountry,
+      supplierType: savedSupplierType,
+      page: String(page),
+      limit: '20',
+    })
+
+    const response = await fetch(`/api/suppliers?${params}`)
+    const data = await response.json()
+
+    if (!response.ok || !data.success) {
+      throw new Error(data.error || 'Unable to load saved suppliers.')
+    }
+
+    setSavedSuppliers(data.suppliers || [])
+    setSavedSupplierPagination(data.pagination)
+    setSavedSupplierPage(page)
+  } catch (error) {
+    setSavedSuppliersError(error.message)
+  } finally {
+    setSavedSuppliersLoading(false)
+  }
+}
+
+useEffect(() => {
+  if (activePage === 'suppliers') {
+    loadSavedSuppliers(1);
+  }
+}, [activePage]);
   return (
     <div className="app">
       <aside className="sidebar">
@@ -594,20 +605,12 @@ async function handleSupplierSearch(e) {
   >
     ▦ Dashboard
   </button>
-
-  <button
-    className={`nav-item ${activePage === 'procurement' ? 'active' : ''}`}
-    onClick={() => setActivePage('procurement')}
-  >
-    ◈ AI Procurement
-  </button>
-
-  <button
-    className={`nav-item ${activePage === 'suppliers' ? 'active' : ''}`}
-    onClick={() => setActivePage('suppliers')}
-  >
-    ♧ Suppliers
-  </button>
+<button
+  className={`nav-item ${activePage === 'procurement' ? 'active' : ''}`}
+  onClick={() => setActivePage('procurement')}
+>
+  ◈ New Procurement
+</button>
 
   <button
     className={`nav-item ${activePage === 'payments' ? 'active' : ''}`}
@@ -653,18 +656,30 @@ async function handleSupplierSearch(e) {
         </header>
 {activePage === 'dashboard' && (
   <>
-    <section className="welcome">
-      <div>
-        <p className="eyebrow">YOUR AGRICULTURAL BUSINESS ASSISTANT</p>
-        <h2>
-          Smarter farming starts with <span>intelligent decisions.</span>
-        </h2>
-        <p>
-          Understand your farming needs, evaluate suppliers and prepare secure purchases with AI.
-        </p>
-      </div>
-      <div className="welcome-icon">🌾</div>
-    </section>
+    
+<section className="welcome">
+  <div>
+    <p className="eyebrow">YOUR AGRICULTURAL BUSINESS ASSISTANT</p>
+
+    <h2>
+      Smarter farming starts with <span>intelligent decisions.</span>
+    </h2>
+
+    <p>
+      Manage agricultural procurement, analyse purchase requests and control payments securely with AI.
+    </p>
+
+    <button
+      className="primary-button"
+      onClick={() => setActivePage('procurement')}
+    >
+      Create Procurement Request →
+    </button>
+  </div>
+
+  <div className="welcome-icon">🌾</div>
+</section>
+
   </>
 )}
       {activePage === 'dashboard' && (
@@ -676,9 +691,9 @@ async function handleSupplierSearch(e) {
     </div>
 
     <div className="stat-card">
-      <span>SUPPLIER NETWORK</span>
-<h3>Search Enabled</h3>
-<small>Live supplier and marketplace leads</small>
+   <span>SPEND CONTROL</span>
+<h3>Policy Protected</h3>
+<small>OutLayer spending limits and human approval</small>
     </div>
 
     <div className="stat-card">
@@ -704,12 +719,11 @@ async function handleSupplierSearch(e) {
 
       {walletError && <small>{walletError}</small>}
     </div>
-
-    <div className="stat-card">
-      <span>OUTLAYER TEE</span>
-      <h3>Not connected</h3>
-      <small>Secure execution pending</small>
-    </div>
+<div className="stat-card">
+  <span>OUTLAYER CUSTODY</span>
+  <h3>Configured</h3>
+  <small>NEAR Testnet · Policy controlled</small>
+</div>
   </section>
 )}
 {activePage === 'dashboard' && (
@@ -814,35 +828,31 @@ async function handleSupplierSearch(e) {
       </div>
     </div>
 
-    <p className="panel-description">
-      Discover agricultural supplier leads worldwide.
-    </p>
+   
+<form onSubmit={handleSupplierSearch}>
+  <label htmlFor="supplier-request">
+    DESCRIBE THE SUPPLIER YOU NEED
+  </label>
 
-    <form onSubmit={handleSupplierSearch}>
-      <label htmlFor="supplier-product">PRODUCT REQUIRED</label>
-      <input
-        id="supplier-product"
-        value={supplierProduct}
-        onChange={(e) => setSupplierProduct(e.target.value)}
-        placeholder="e.g. NPK fertilizer"
-      />
+  <textarea
+    id="supplier-request"
+    value={supplierRequest}
+    onChange={(e) => setSupplierRequest(e.target.value)}
+    placeholder="Example: I need 2 tonnes of NPK 15-15-15 fertilizer. Find manufacturers and distributors worldwide, prioritising suppliers who can deliver to Michigan, USA. Include company names, contact emails and official websites."
+    rows={5}
+    required
+  />
 
-      <label htmlFor="supplier-location">TARGET LOCATION</label>
-      <input
-        id="supplier-location"
-        value={supplierLocation}
-        onChange={(e) => setSupplierLocation(e.target.value)}
-        placeholder="e.g. England; USA; or Worldwide"
-      />
-
-      <button
-        type="submit"
-        className="primary-button"
-        disabled={supplierLoading}
-      >
-        {supplierLoading ? 'Searching...' : 'Find Suppliers →'}
-      </button>
-    </form>
+  <button
+    type="submit"
+    className="primary-button"
+    disabled={supplierLoading || !supplierRequest.trim()}
+  >
+    {supplierLoading
+      ? 'Understanding request and searching...'
+      : 'Find Global Suppliers →'}
+  </button>
+</form>
 
     {supplierError && (
       <div className="request-feedback">
@@ -861,28 +871,76 @@ async function handleSupplierSearch(e) {
 
         <p>{supplierResults.message}</p>
 
-        {supplierResults.suppliers?.map((supplier, index) => (
-          <div key={supplier.url || index}>
-            <h4>{supplier.name}</h4>
-            <p className="supplier-category">{supplier.category}</p>
-            <p>{supplier.description}</p>
-
-            {(supplier.website || supplier.source) && (
-              <a
-                href={supplier.website || supplier.source}
-                target="_blank"
-                rel="noreferrer"
-              >
-                Visit supplier source →
-              </a>
-            )}
+        {supplierResults.criteria && (
+          <div>
+            <h4>Gemini understood your request</h4>
+            <p><strong>Product:</strong> {supplierResults.criteria.product}</p>
+            <p><strong>Quantity:</strong> {supplierResults.criteria.quantity || 'Not specified'} {supplierResults.criteria.unit}</p>
+            <p><strong>Destination:</strong> {supplierResults.criteria.destination || 'Not specified'}</p>
+            <p><strong>Supplier location:</strong> {supplierResults.criteria.preferredSupplierLocation || 'Worldwide'}</p>
           </div>
-        ))}
+        )}
+
+        {supplierResults.suppliers?.map((supplier, index) => {
+          const email = supplier.contactEmail || supplier.email;
+          const phone = supplier.contactPhone || supplier.phone;
+          const location = supplier.location || supplier.address || supplier.country;
+          const website = supplier.officialWebsite || supplier.website;
+          const source = supplier.source || supplier.url;
+
+          return (
+            <div
+              key={supplier.url || supplier.website || index}
+              className="supplier-result"
+            >
+              <h4>{supplier.name || supplier.companyName || 'Unnamed supplier'}</h4>
+
+              <p className="supplier-category">
+                {supplier.supplierType || supplier.category || 'Type not established'}
+              </p>
+
+              <p>{supplier.description || supplier.evidenceSummary || 'No description available.'}</p>
+
+              <p><strong>Location:</strong> {location || 'Not publicly available'}</p>
+
+              <p>
+                <strong>Email:</strong>{' '}
+                {email ? <a href={`mailto:${email}`}>{email}</a> : 'Not publicly available'}
+              </p>
+
+              {phone && <p><strong>Phone:</strong> {phone}</p>}
+
+              {website && (
+                <p>
+                  <strong>Official website:</strong>{' '}
+                  <a href={website} target="_blank" rel="noreferrer">
+                    Visit website
+                  </a>
+                </p>
+              )}
+
+              {source && (
+                <p>
+                  <a href={source} target="_blank" rel="noreferrer">
+                    View source evidence →
+                  </a>
+                </p>
+              )}
+
+              <p>
+                <strong>Verification:</strong>{' '}
+                {supplier.verificationStatus || 'Unverified'}
+              </p>
+            </div>
+          );
+        })}
       </div>
     )}
+
   </div>
 )}
- {activePage === 'payments' && (
+
+{activePage === 'payments' && (
   <section className="payments-grid">
 
     {/* PREPARE SUPPLIER PAYMENT */}
@@ -897,20 +955,11 @@ async function handleSupplierSearch(e) {
       </p>
 
       <div className="payment-wallet-status">
-        <strong>NEAR Wallet</strong>
-
-        {walletAccount ? (
-          <p>Connected: {walletAccount}</p>
-        ) : (
-          <button
-            type="button"
-            className="primary-button"
-            onClick={handleWalletConnect}
-            disabled={walletConnecting}
-          >
-            {walletConnecting ? 'Connecting...' : 'Connect NEAR Wallet'}
-          </button>
-        )}
+        <strong>OutLayer Custody</strong>
+        <p>Configured · NEAR Testnet</p>
+        <small>
+          Payments are submitted through policy-controlled custody.
+        </small>
       </div>
 
       <form onSubmit={handlePaymentPreview}>
@@ -919,6 +968,7 @@ async function handleSupplierSearch(e) {
           value={paymentSupplier}
           onChange={(e) => setPaymentSupplier(e.target.value)}
           placeholder="Supplier name"
+          required
         />
 
         <label>SUPPLIER NEAR ACCOUNT</label>
@@ -926,19 +976,22 @@ async function handleSupplierSearch(e) {
           value={paymentRecipient}
           onChange={(e) => setPaymentRecipient(e.target.value)}
           placeholder="supplier.testnet"
+          required
         />
 
         <label>PAYMENT AMOUNT (NEAR)</label>
         <input
           type="number"
           min="0.01"
+          max="1"
           step="0.01"
           value={paymentAmount}
           onChange={(e) => setPaymentAmount(e.target.value)}
           placeholder="0.00"
+          required
         />
 
-        <small>Network: NEAR Testnet</small>
+        <small>Network: NEAR Testnet · Maximum per transaction: 1 NEAR</small>
 
         <button type="submit" className="primary-button">
           Generate Payment Preview
@@ -948,20 +1001,26 @@ async function handleSupplierSearch(e) {
       {paymentPreview && (
         <div className="request-feedback">
           <h4>Payment Preview</h4>
-          <p>Supplier: {paymentSupplier}</p>
-          <p>Recipient: {paymentRecipient}</p>
-          <p>Amount: {paymentAmount} NEAR</p>
-          <p>Network: NEAR Testnet</p>
-          <strong>Awaiting farmer approval</strong>
+
+          <p>
+            Supplier: {paymentSupplier}
+          </p>
+          <p>
+            Recipient: {paymentRecipient}
+          </p>
+          <p>
+            Amount: {paymentAmount} NEAR
+          </p>
 
           <button
             type="button"
+            className="primary-button"
             onClick={handleApprovePayment}
             disabled={paymentSending}
           >
             {paymentSending
-              ? 'Waiting for wallet approval...'
-              : 'Approve & Pay'}
+              ? 'Submitting Request...'
+              : 'Request OutLayer Approval'}
           </button>
         </div>
       )}
@@ -979,83 +1038,89 @@ async function handleSupplierSearch(e) {
       )}
     </div>
 
-    {/* UNIVERSAL CHECKOUT - TIDEPOOL SANDBOX */}
-    <div className="panel" id="universal-checkout">
+
+    {/* OUTLAYER APPROVAL & SECURITY */}
+    <div className="panel" id="outlayer-security">
       <div className="panel-heading">
-        <h3>Universal Checkout</h3>
-        <span className="coming-soon">Tidepool Sandbox</span>
+        <h3>OutLayer Approval & Security</h3>
+        <span className="coming-soon">Policy Protected</span>
       </div>
 
       <p className="panel-description">
-        Preview a USDC to wNEAR conversion on NEAR Testnet.
+        Every procurement payment is subject to configured
+        spending policies and human approval.
       </p>
 
-      <form onSubmit={handleTidepoolQuote}>
-        <label>USDC AMOUNT</label>
-        <input
-          type="number"
-          min="0.000001"
-          step="0.000001"
-          value={tidepoolAmount}
-          onChange={(e) => setTidepoolAmount(e.target.value)}
-          placeholder="e.g. 10"
-          required
-        />
+      <div className="security-details">
+        <p><strong>Network:</strong> NEAR Testnet</p>
+        <p><strong>Maximum per transaction:</strong> 1 NEAR</p>
+        <p><strong>Hourly spending limit:</strong> 2 NEAR</p>
+        <p><strong>Daily spending limit:</strong> 5 NEAR</p>
+        <p><strong>Monthly spending limit:</strong> 20 NEAR</p>
+        <p><strong>Human approval:</strong> Required</p>
+      </div>
 
-        <small>
-          Network: NEAR Testnet · Quote preview only
-        </small>
+      <div className="request-feedback">
+        <h4>Approval Status</h4>
+
+        <p>
+          <strong>Approval:</strong>{' '}
+          {outlayerApprovalStatus || 'Not checked'}
+        </p>
+
+        {outlayerApprovalId && (
+          <p>
+            <strong>Approval ID:</strong> {outlayerApprovalId}
+          </p>
+        )}
 
         <button
-          type="submit"
-          className="primary-button"
-          disabled={tidepoolLoading}
+          type="button"
+          onClick={refreshOutlayerStatus}
+          disabled={!outlayerApprovalId}
         >
-          {tidepoolLoading
-            ? 'Getting quote...'
-            : 'Get Conversion Quote'}
+          Refresh Approval Status
         </button>
-      </form>
 
-      {tidepoolError && (
-        <div className="request-feedback">
-          <p>{tidepoolError}</p>
-        </div>
-      )}
-{tidepoolQuote && (
-  <div className="request-feedback">
-    <h4>Conversion Quote</h4>
+        <p>
+          Review this request in OutLayer Custody → Approvals.
+        </p>
+      </div>
 
-    <p>
-      <strong>Input:</strong>{" "}
-      {tidepoolQuote.quote?.amountInFormatted} USDC
-    </p>
+      <div className="request-feedback">
+        <h4>Payment Request Status</h4>
 
-    <p>
-      <strong>Estimated output:</strong>{" "}
-     {Number(tidepoolQuote.quote?.amountOutFormatted || 0).toLocaleString(undefined, {
-  maximumFractionDigits: 6,
-})} wNEAR
-    </p>
+        <p>
+          {outlayerPaymentStatus || 'No payment request submitted yet.'}
+        </p>
 
-    <p>
-      <strong>Minimum output:</strong>{" "}
-      {tidepoolQuote.quote?.minAmountOutFormatted || "Not provided"} wNEAR
-    </p>
+        {outlayerRequestId && (
+          <>
+            <p>
+              <strong>Request ID:</strong> {outlayerRequestId}
+            </p>
 
-    <p>
-      <strong>Estimated time:</strong>{" "}
-      {tidepoolQuote.quote?.timeEstimate ?? "Not provided"} seconds
-    </p>
+            <button
+              type="button"
+              onClick={refreshOutlayerRequestStatus}
+            >
+              Refresh Payment Status
+            </button>
+          </>
+        )}
 
-    <small>
-      Tidepool community sandbox quote. No funds have been transferred.
-    </small>
-  </div>
-)}
-  </div>
+        {outlayerTransactionHash && (
+          <p>
+            <strong>Transaction Hash:</strong>{' '}
+            {outlayerTransactionHash}
+          </p>
+        )}
+      </div>
+    </div>
+
+
     {/* PAYMENT ACTIVITY */}
-    <div className="panel" id="payments">
+    <div className="panel" id="payment-activity">
       <div className="panel-heading">
         <h3>Payment Activity</h3>
         <span className="coming-soon">Testnet</span>
@@ -1066,7 +1131,7 @@ async function handleSupplierSearch(e) {
           <div>⇄</div>
           <h4>No transactions yet</h4>
           <p>
-            Approved NEAR testnet transactions will appear here.
+            Verified NEAR Testnet transactions will appear here.
           </p>
         </div>
       ) : (
@@ -1077,23 +1142,31 @@ async function handleSupplierSearch(e) {
               <p>Recipient: {tx.recipient}</p>
               <p>Amount: {tx.amount} NEAR</p>
               <p>Status: {tx.status}</p>
-              <p>Transaction: {tx.hash.slice(0, 12)}...</p>
+              <p>
+                Transaction: {tx.hash
+                  ? `${tx.hash.slice(0, 12)}...`
+                  : 'Not available'}
+              </p>
               <p>{tx.date}</p>
 
-              <button
-                type="button"
-                onClick={() => navigator.clipboard.writeText(tx.hash)}
-              >
-                Copy Hash
-              </button>
+              {tx.hash && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => navigator.clipboard.writeText(tx.hash)}
+                  >
+                    Copy Hash
+                  </button>
 
-              <a
-                href={`https://testnet.nearblocks.io/txns/${tx.hash}`}
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                View on Explorer
-              </a>
+                  <a
+                    href={`https://testnet.nearblocks.io/txns/${tx.hash}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    View on Explorer
+                  </a>
+                </>
+              )}
             </div>
           ))}
         </div>
@@ -1110,13 +1183,13 @@ async function handleSupplierSearch(e) {
     </div>
 
     <div className="security-row">
-      <span>OutLayer TEE</span>
-      <span className="pending">Not configured</span>
+      <span>OutLayer Custody</span>
+<span className="safe">Configured — NEAR Testnet</span>
     </div>
 
     <div className="security-row">
-      <span>Spending policies</span>
-      <span className="pending">Not configured</span>
+     <span>Spending policies</span>
+<span className="safe">Configured — Active</span>
     </div>
 
     <div className="security-row">

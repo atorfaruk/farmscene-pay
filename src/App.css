@@ -129,13 +129,15 @@ nav {
   color: #718278;
   margin-top: 20px;
 }
-
 .main-content {
   margin-left: 250px;
+  width: calc(100% - 250px);
+  max-width: none;
+  min-width: 0;
   padding: 35px 42px;
-  max-width: 1600px;
+  box-sizing: border-box;
+  flex: 1;
 }
-
 .topbar {
   display: flex;
   justify-content: space-between;
@@ -503,27 +505,103 @@ footer {
   background: #4b8063;
   border-radius: 10px;
 }
+
+/* =====================================
+   PAYMENTS PAGE LAYOUT
+===================================== */
+
 .payments-grid {
   display: grid;
   width: 100%;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 24px;
-  align-items: stretch;
+  align-items: start;
   box-sizing: border-box;
 }
 
 .payments-grid > .panel {
   width: 100%;
   min-width: 0;
+  height: auto;
+  box-sizing: border-box;
+  text-align: left;
 }
 
-@media (max-width: 800px) {
-  .payments-grid {
-    grid-template-columns: 1fr;
-  }
+/* Payment Activity spans both columns */
+#payment-activity {
+  grid-column: 1 / -1;
+  width: 100%;
 }
 
-/* AI Procurement Analysis readability */
+/* Payment wallet information */
+.payment-wallet-status {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 18px;
+  margin: 18px 0;
+  border: 1px solid rgba(65, 190, 120, 0.3);
+  border-radius: 12px;
+  background: rgba(30, 75, 48, 0.2);
+  text-align: left;
+}
+
+.payment-wallet-status strong {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 17px;
+}
+
+.payment-wallet-status p,
+.payment-wallet-status small {
+  font-size: 14px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+
+/* OutLayer security policy */
+.security-details {
+  width: 100%;
+  margin-top: 20px;
+  box-sizing: border-box;
+}
+
+.security-details p {
+  display: flex;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 10px 0;
+  margin: 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+/* Payment feedback */
+.payments-grid .request-feedback {
+  width: 100%;
+  box-sizing: border-box;
+  margin-top: 18px;
+  padding: 16px;
+  overflow-wrap: anywhere;
+}
+
+/* Payment form */
+#prepare-payment form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+#prepare-payment input {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+/* =====================================
+   AI PROCUREMENT ANALYSIS READABILITY
+===================================== */
+
 .analysis-result {
   width: 100%;
   max-width: 100%;
@@ -569,69 +647,205 @@ footer {
 .analysis-result li {
   margin-bottom: 8px;
 }
-/* Universal Checkout quote styling */
-#universal-checkout .request-feedback {
-  margin-top: 22px;
-  padding: 22px;
-  border: 1px solid rgba(65, 190, 120, 0.3);
-  border-radius: 14px;
-  background: rgba(30, 75, 48, 0.25);
-  text-align: left;
+
+/* =====================================
+   RESPONSIVE PAYMENTS LAYOUT
+===================================== */
+
+@media (max-width: 800px) {
+  .payments-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  #payment-activity {
+    grid-column: auto;
+  }
 }
 
-#universal-checkout .request-feedback h4 {
-  text-align: center;
-  margin-bottom: 20px;
-  font-size: 17px;
-}
+/* =========================================
+   FARMSCENE PAY - PROFESSIONAL PAYMENT UI
+========================================= */
 
-#universal-checkout .request-feedback p {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 12px;
-  flex-wrap: wrap;
-  line-height: 1.6;
-  margin: 14px 0;
-  overflow-wrap: anywhere;
-}
-
-#universal-checkout .request-feedback p strong {
-  flex: 0 0 auto;
-}
-
-#universal-checkout .request-feedback small {
-  display: block;
-  margin-top: 18px;
-  text-align: center;
-  line-height: 1.6;
-  opacity: 0.8;
-}
-/* Payments page layout */
 .payments-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  width: 100%;
-  gap: 24px;
-  align-items: start;
+  width: 100% !important;
+  max-width: 1200px;
+  margin: 0 auto;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  gap: 28px;
+  align-items: stretch;
 }
 
 .payments-grid > .panel {
-  width: 100%;
+  width: 100% !important;
+  max-width: none !important;
   min-width: 0;
-  height: 100%;
+  height: auto;
+  padding: 30px;
+  text-align: left;
+  border-radius: 18px;
+  box-sizing: border-box;
 }
-#payments {
+
+.payments-grid .panel-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.payments-grid .panel-heading h3 {
+  font-size: 21px;
+  line-height: 1.4;
+  margin: 0;
+}
+
+.payments-grid .panel-description {
+  font-size: 14px;
+  line-height: 1.7;
+  text-align: left;
+  margin-bottom: 24px;
+}
+
+/* Payment form */
+
+#prepare-payment form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+}
+
+#prepare-payment form label {
+  margin-top: 10px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.6px;
+}
+
+#prepare-payment form input {
+  width: 100%;
+  min-height: 48px;
+  padding: 12px 14px;
+  border-radius: 9px;
+  box-sizing: border-box;
+  font-size: 15px;
+}
+
+#prepare-payment form small {
+  line-height: 1.6;
+  margin: 8px 0;
+}
+
+#prepare-payment form button {
+  width: 100%;
+  min-height: 48px;
+  margin-top: 12px;
+}
+
+/* OutLayer custody information */
+
+.payment-wallet-status {
+  width: 100%;
+  padding: 20px;
+  margin: 20px 0;
+  border-radius: 12px;
+  box-sizing: border-box;
+  text-align: left;
+}
+
+.payment-wallet-status strong {
+  font-size: 17px;
+}
+
+.payment-wallet-status p,
+.payment-wallet-status small {
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+}
+
+/* Security policy details */
+
+.security-details {
+  width: 100%;
+}
+
+.security-details p {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 16px;
+  padding: 14px 0;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.security-details p strong {
+  flex: 1;
+}
+
+.security-details p:not(strong) {
+  overflow-wrap: anywhere;
+}
+
+/* Approval and payment status cards */
+
+.payments-grid .request-feedback {
+  width: 100%;
+  padding: 20px;
+  margin-top: 20px;
+  border-radius: 12px;
+  box-sizing: border-box;
+  text-align: left;
+}
+
+.payments-grid .request-feedback p {
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+}
+
+.payments-grid .request-feedback button {
+  max-width: 100%;
+  margin-top: 12px;
+  padding: 12px 18px;
+  border-radius: 8px;
+}
+
+/* Payment activity */
+
+#payment-activity {
   grid-column: 1 / -1;
   width: 100%;
 }
 
-@media (max-width: 768px) {
+#payment-activity .empty-state {
+  padding: 35px 20px;
+  text-align: center;
+}
+
+#payment-activity .transaction-list {
+  width: 100%;
+}
+
+/* Responsive layout */
+
+@media (max-width: 900px) {
   .payments-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: 1fr !important;
   }
 
-  #payments {
+  #payment-activity {
     grid-column: auto;
+  }
+}
+
+@media (max-width: 600px) {
+  .payments-grid > .panel {
+    padding: 20px;
+  }
+
+  .payments-grid .panel-heading h3 {
+    font-size: 18px;
   }
 }

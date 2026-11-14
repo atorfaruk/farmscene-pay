@@ -272,6 +272,18 @@ function identifySourceType(supplier) {
   ) {
     return "buyer_listing";
   }
+  // Marketplace platforms are separate discovery leads,
+  // not direct supplier companies.
+  if (
+    /\b(tradewheel|alibaba|globalsources|made-in-china|indiamart|ec21|go4worldbusiness|tradeindia)\b/i.test(
+      `${name} ${url}`
+    ) ||
+    /\b(marketplace listing|seller listing|b2b marketplace)\b/i.test(
+      `${name} ${description} ${url}`
+    )
+  ) {
+    return "marketplace";
+  }
 
   // Directories and marketplaces are discovery sources,
   // not individual supplier companies.
@@ -665,6 +677,15 @@ const researchSources = classifiedSourceResults.filter(
   (supplier) => supplier.sourceType === "research_source"
 );
 
+const marketplaceLeads = classifiedSourceResults
+  .filter((supplier) => supplier.sourceType === "marketplace")
+  .map((supplier) => ({
+    ...supplier,
+    supplierType: "marketplace",
+    category: "Marketplace",
+    verificationStatus: "unverified",
+  }));
+
 const directSupplierLeads = classifiedSourceResults.filter(
   (supplier) =>
     supplier.sourceType === "supplier" &&
@@ -909,12 +930,74 @@ database: {
 
     searches,
     providerErrors,
+researchSources,
+marketplaceLeads,
 
-    researchSources,
+totalLeadsBeforeLimit: classifiedSuppliers.length,
+totalLeadsReturned: finalSuppliers.length,
+totalMarketplaceLeads: marketplaceLeads.length,
 
-    totalLeadsBeforeLimit: classifiedSuppliers.length,
-    totalLeadsReturned: finalSuppliers.length,
+suppliers: finalSuppliers,
+  };
+}
 
-    suppliers: finalSuppliers,
+export async function getSavedSuppliers({
+  search = "",
+  product = "",
+  country = "",
+  supplierType = "",
+  page = 1,
+  limit = 20,
+}) {
+  const safePage = Math.max(1, Number.parseInt(page, 10) || 1);
+  const safeLimit = Math.min(
+    100,
+    Math.max(1, Number.parseInt(limit, 10) || 20)
+  );
+
+  const from = (safePage - 1) * safeLimit;
+  const to = from + safeLimit - 1;
+
+  let query = supabase
+    .from("suppliers")
+    .select(
+      "id, company_name, products, supplier_type, country, city, website, description, source_url, source_provider, verification_status, created_at, updated_at",
+      { count: "exact" }
+    );
+
+  if (search.trim()) {
+    query = query.ilike("company_name", `%${search.trim()}%`);
+  }
+
+  if (product.trim()) {
+    query = query.contains("products", [product.trim()]);
+  }
+
+  if (country.trim()) {
+    query = query.ilike("country", `%${country.trim()}%`);
+  }
+
+  if (supplierType.trim()) {
+    query = query.eq("supplier_type", supplierType.trim());
+  }
+
+  const { data, error, count } = await query
+    .order("company_name", { ascending: true })
+    .range(from, to);
+
+  if (error) {
+    console.error("Supplier directory retrieval failed:", error.message);
+    throw new Error("Unable to retrieve saved suppliers.");
+  }
+
+  return {
+    success: true,
+    suppliers: data || [],
+    pagination: {
+      page: safePage,
+      limit: safeLimit,
+      total: count || 0,
+      totalPages: Math.ceil((count || 0) / safeLimit),
+    },
   };
 }

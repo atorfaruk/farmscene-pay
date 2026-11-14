@@ -187,3 +187,76 @@ ${JSON.stringify(supplierRecords, null, 2)}
 
   return result;
 }
+// =====================================================
+// 3. NATURAL-LANGUAGE SUPPLIER REQUEST UNDERSTANDING
+// =====================================================
+
+export async function understandSupplierRequestWithOpenRouter(request) {
+  if (typeof request !== "string" || !request.trim()) {
+    throw new Error("Please describe the supplier you need.");
+  }
+
+  const result = await callOpenRouter([
+    {
+      role: "system",
+      content: `You are FarmScene Pay's global agricultural sourcing assistant.
+
+Understand natural-language supplier search requests.
+
+Extract the following fields:
+- product
+- specifications
+- quantity
+- unit
+- destination
+- preferredSupplierLocation
+- supplierTypes
+- requiredContactDetails
+- searchScope
+- additionalRequirements
+- clarificationNeeded
+
+RULES:
+1. Preserve the user's requested product and specifications.
+2. Support worldwide supplier discovery.
+3. Treat delivery destination as a delivery preference, not a geographical restriction on supplier discovery.
+4. Identify manufacturers, distributors, wholesalers and other requested supplier types.
+5. Never invent missing information.
+6. Use null for unknown individual values and [] for unknown lists.
+7. If the user requests contact information, preserve that requirement.
+8. Do not invent supplier names, prices, availability or delivery promises.
+9. Do not authorize or execute payments.
+
+Return ONLY valid JSON.
+
+Required structure:
+{
+  "product": "",
+  "specifications": "",
+  "quantity": null,
+  "unit": null,
+  "destination": "",
+  "preferredSupplierLocation": "Worldwide",
+  "supplierTypes": [],
+  "requiredContactDetails": [],
+  "searchScope": "global",
+  "additionalRequirements": [],
+  "clarificationNeeded": []
+}`,
+    },
+    {
+      role: "user",
+      content: request.trim(),
+    },
+  ]);
+
+  if (!result.analysis?.product) {
+    throw new Error("OpenRouter could not identify the requested product.");
+  }
+
+  return {
+    provider: result.provider,
+    model: result.model,
+    criteria: result.analysis,
+  };
+}

@@ -16,7 +16,7 @@ const PROVIDERS = [
   { name: "gemini", extract: extractWithGemini },
 ];
 
-const BATCH_SIZE = 2;
+const BATCH_SIZE = 3;
 const TIMEOUT_MS = 15000;
 const MAX_RETRIES = 1;
 
@@ -440,9 +440,9 @@ export async function extractCompaniesFromSupplierSources(
         source.url ?? source.website ?? ""
       ),
 
-      description: String(
-        source.description ?? source.snippet ?? ""
-      ).slice(0, 2500),
+     description: String(
+  source.description ?? source.snippet ?? ""
+).slice(0, 1200),
     })
   );
 

@@ -113,7 +113,28 @@ function normalizeResults(results, provider) {
         },
       };
     })
-    .filter((item) => item.url);
+    .filter(
+  (item) =>
+    item.url && !isObviousNonSupplierSource(item)
+);
+}
+function isObviousNonSupplierSource(item) {
+  const title = String(item.title || "").toLowerCase();
+  const url = String(item.url || "").toLowerCase();
+  const description = String(item.description || "").toLowerCase();
+
+  const buyerListing =
+    /\/buyers?(?:\/|$)/i.test(url) ||
+    /\b(buy leads?|buyer requests?|looking to buy|wanted to buy)\b/i.test(
+      `${title} ${description}`
+    );
+
+  const irrelevantPage =
+  /\b(market research report|industry statistics|market forecast|market size report|top .{0,40} companies|leading .{0,40} companies|companies .{0,40} world)\b/i.test(
+    title
+  );
+
+  return buyerListing || irrelevantPage;
 }
 
 function getProviderConfiguration() {
